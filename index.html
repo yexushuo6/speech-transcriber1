@@ -1,12 +1,199 @@
 <!DOCTYPE html>
 <html lang="zh">
-  <head>
-    <meta charset="UTF-8">
-    <title>语音转文字工具</title>
-  </head>
-  <body>
-    <h1>欢迎来到我的语音转文字工具！</h1>
-    <p>这是通过 GitHub Pages 部署的网页。</p>
-  </body>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>实时语音转文字（增强版）</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: "Arial", sans-serif;
+      background-color: #f2f2f2;
+      padding: 16px;
+      box-sizing: border-box;
+    }
+
+    h1 {
+      text-align: center;
+      color: #333;
+      font-size: 1.8rem;
+      margin-bottom: 20px;
+    }
+
+    #controls {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+
+    button {
+      flex: 1 1 30%;
+      min-width: 100px;
+      padding: 12px 16px;
+      font-size: 1rem;
+      border: none;
+      border-radius: 8px;
+      background-color: #4caf50;
+      color: white;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background-color: #45a049;
+    }
+
+    #output {
+      background-color: white;
+      padding: 16px;
+      min-height: 200px;
+      font-size: 1.1rem;
+      border-radius: 8px;
+      border: 1px solid #ccc;
+      white-space: pre-wrap;
+    }
+
+    #stats {
+      margin-top: 10px;
+      font-size: 0.95rem;
+      color: #666;
+      text-align: left;
+    }
+
+    @media (max-width: 600px) {
+      button {
+        flex: 1 1 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <h1>🎤 实时语音转文字</h1>
+
+  <div id="controls">
+    <button onclick="startRecognition()">开始识别</button>
+    <button onclick="stopRecognition()">停止识别</button>
+    <button onclick="clearText()">清空内容</button>
+    <button onclick="copyText()">复制内容</button>
+  </div>
+
+  <div id="output">👉 你说的话会显示在这里。</div>
+
+  <div id="stats">
+    字数统计：<span id="charCount">0</span> 字<br />
+    “点击”出现次数：<span id="clickCount">0</span><br />
+    识别时长：<span id="timer">00:00</span>
+  </div>
+
+  <script>
+    let recognition;
+    let fullText = "";
+    let startTime = null;
+    let timerInterval = null;
+
+    const output = document.getElementById("output");
+    const charCountEl = document.getElementById("charCount");
+    const clickCountEl = document.getElementById("clickCount");
+    const timerEl = document.getElementById("timer");
+
+    function initRecognition() {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SpeechRecognition) {
+        alert("❌ 当前浏览器不支持 Web Speech API，请使用 Chrome 浏览器打开。");
+        return;
+      }
+
+      recognition = new SpeechRecognition();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = "zh-CN";
+
+      recognition.onresult = function (event) {
+        let interimTranscript = "";
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const transcript = event.results[i][0].transcript;
+          if (event.results[i].isFinal) {
+            fullText += transcript + " ";
+            updateOutput();
+          } else {
+            interimTranscript += transcript;
+          }
+        }
+
+        output.innerText = fullText + "[实时识别中] " + interimTranscript;
+      };
+
+      recognition.onerror = function (event) {
+        output.innerText += `\n[识别错误]: ${event.error}`;
+      };
+
+      recognition.onend = function () {
+        stopTimer();
+      };
+    }
+
+    function startRecognition() {
+      if (!recognition) initRecognition();
+      recognition.start();
+      fullText = fullText.trim() + " "; // 防止合并末尾单词
+      startTimer();
+      output.innerText = "[识别已启动... 请开始说话]";
+    }
+
+    function stopRecognition() {
+      if (recognition) recognition.stop();
+      output.innerText += "\n[识别已停止]";
+      stopTimer();
+    }
+
+    function clearText() {
+      fullText = "";
+      output.innerText = "👉 你说的话会显示在这里。";
+      charCountEl.innerText = "0";
+      clickCountEl.innerText = "0";
+      timerEl.innerText = "00:00";
+      stopTimer();
+    }
+
+    function copyText() {
+      navigator.clipboard.writeText(fullText.trim()).then(() => {
+        alert("✅ 已复制到剪贴板！");
+      }).catch(err => {
+        alert("❌ 复制失败：" + err);
+      });
+    }
+
+    function updateOutput() {
+      output.innerText = fullText.trim();
+
+      // 统计字数（不含标点符号）
+      const textWithoutPunctuation = fullText.replace(/[\p{P}\p{S}\s]/gu, '').trim();
+      const charCount = textWithoutPunctuation.length;
+      charCountEl.innerText = charCount;
+
+      // 统计“点击”的出现次数
+      const clickMatches = fullText.match(/点击/g);
+      const clickCount = clickMatches ? clickMatches.length : 0;
+      clickCountEl.innerText = clickCount;
+    }
+
+    function startTimer() {
+      startTime = Date.now();
+      timerInterval = setInterval(() => {
+        const now = Date.now();
+        const diff = Math.floor((now - startTime) / 1000);
+        const minutes = String(Math.floor(diff / 60)).padStart(2, '0');
+        const seconds = String(diff % 60).padStart(2, '0');
+        timerEl.innerText = `${minutes}:${seconds}`;
+      }, 1000);
+    }
+
+    function stopTimer() {
+      clearInterval(timerInterval);
+      timerInterval = null;
+    }
+  </script>
+</body>
 </html>
-    
+
