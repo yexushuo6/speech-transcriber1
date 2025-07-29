@@ -8,12 +8,12 @@
     body {
       font-family: Arial, sans-serif;
       padding: 20px;
-      max-width: 600px;
+      max-width: 700px;
       margin: auto;
-      background: #f8f9fa;
+      background: #f0f2f5;
     }
     h1 {
-      font-size: 1.5em;
+      font-size: 1.8em;
       text-align: center;
       margin-bottom: 20px;
     }
@@ -32,14 +32,27 @@
     #stopBtn {
       background-color: #dc3545;
     }
+    #info {
+      text-align: center;
+      margin-top: 10px;
+      font-size: 0.95em;
+      color: #555;
+    }
     #transcript {
       margin-top: 20px;
       padding: 15px;
       border: 1px solid #ccc;
-      min-height: 120px;
+      min-height: 150px;
       background: #fff;
       white-space: pre-wrap;
       border-radius: 5px;
+    }
+    .stats {
+      margin-top: 10px;
+      font-size: 0.95em;
+      color: #444;
+      display: flex;
+      justify-content: space-between;
     }
   </style>
 </head>
@@ -48,6 +61,11 @@
   <div style="text-align:center;">
     <button id="startBtn">🎤 开始识别</button>
     <button id="stopBtn" disabled>✋ 停止识别</button>
+  </div>
+  <div id="info">
+    开始时间：<span id="startTime">--</span> |
+    用时：<span id="timer">00:00</span> |
+    字数：<span id="charCount">0</span>
   </div>
   <div id="transcript" aria-live="polite"></div>
 
@@ -67,26 +85,45 @@
   let recognizing = false;
   let finalTranscript = '';
   let errorCount = 0;
-  let forceStop = false;
+  let timerInterval = null;
+  let seconds = 0;
 
   const startBtn = document.getElementById("startBtn");
   const stopBtn = document.getElementById("stopBtn");
   const transcriptDiv = document.getElementById("transcript");
+  const charCountSpan = document.getElementById("charCount");
+  const timerSpan = document.getElementById("timer");
+  const startTimeSpan = document.getElementById("startTime");
+
+  const updateTimer = () => {
+    seconds++;
+    const m = String(Math.floor(seconds / 60)).padStart(2, '0');
+    const s = String(seconds % 60).padStart(2, '0');
+    timerSpan.textContent = `${m}:${s}`;
+  };
+
+  const countCharacters = (text) => {
+    return text.replace(/[^\u4e00-\u9fa5a-zA-Z0-9]/g, "").length;
+  };
 
   startBtn.onclick = () => {
     if (!recognizing) {
       finalTranscript = '';
       transcriptDiv.textContent = '';
       errorCount = 0;
-      forceStop = false;
+      seconds = 0;
+      timerSpan.textContent = "00:00";
+      charCountSpan.textContent = "0";
+      startTimeSpan.textContent = new Date().toLocaleTimeString();
       recognition.start();
     }
   };
 
   stopBtn.onclick = () => {
     if (recognizing) {
-      forceStop = true;
+      recognizing = false;
       recognition.stop();
+      clearInterval(timerInterval);
     }
   };
 
@@ -94,20 +131,23 @@
     recognizing = true;
     startBtn.disabled = true;
     stopBtn.disabled = false;
-    console.log("语音识别已启动");
+    timerInterval = setInterval(updateTimer, 1000);
+    console.log("识别已启动");
   };
 
   recognition.onend = () => {
-    console.log("语音识别已结束");
-    recognizing = false;
-    startBtn.disabled = false;
-    stopBtn.disabled = true;
-
-    if (!forceStop && errorCount < 5) {
-      console.log("尝试重新启动识别...");
-      setTimeout(() => recognition.start(), 300); // 避免立即重启导致出错
-    } else if (errorCount >= 5) {
-      alert("识别多次失败，已停止。请刷新页面重试");
+    console.log("识别已结束");
+    clearInterval(timerInterval);
+    if (recognizing && errorCount < 3) {
+      recognition.start();  // 自动重启
+      console.log("重新启动识别");
+    } else {
+      recognizing = false;
+      startBtn.disabled = false;
+      stopBtn.disabled = true;
+      if (errorCount >= 3) {
+        alert("识别多次失败，已自动停止。请刷新页面后重试。");
+      }
     }
   };
 
@@ -116,8 +156,11 @@
     errorCount++;
     if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
       alert("请允许麦克风权限以使用语音识别");
-      forceStop = true;
-    } else if (event.error === 'network') {
+      recognizing = false;
+      startBtn.disabled = false;
+      stopBtn.disabled = true;
+    }
+    if (event.error === 'network') {
       alert("网络错误，请检查您的网络连接");
     }
   };
@@ -132,7 +175,9 @@
         interim += text;
       }
     }
-    transcriptDiv.textContent = finalTranscript + interim;
+    const fullText = finalTranscript + interim;
+    transcriptDiv.textContent = fullText;
+    charCountSpan.textContent = countCharacters(fullText);
   };
 </script>
 </body>
