@@ -2,183 +2,157 @@
 <html lang="zh">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>连续语音识别助手</title>
+  <title>语音实时识别</title>
   <style>
     body {
       font-family: Arial, sans-serif;
       padding: 20px;
-      max-width: 700px;
-      margin: auto;
-      background: #f0f2f5;
-    }
-    h1 {
-      font-size: 1.8em;
-      text-align: center;
-      margin-bottom: 20px;
-    }
-    button {
-      font-size: 1em;
-      padding: 10px 20px;
-      margin: 10px 5px;
-      border: none;
-      border-radius: 5px;
-      cursor: pointer;
-      color: #fff;
-    }
-    #startBtn {
-      background-color: #28a745;
-    }
-    #stopBtn {
-      background-color: #dc3545;
-    }
-    #info {
-      text-align: center;
-      margin-top: 10px;
-      font-size: 0.95em;
-      color: #555;
     }
     #transcript {
       margin-top: 20px;
-      padding: 15px;
       border: 1px solid #ccc;
-      min-height: 150px;
-      background: #fff;
-      white-space: pre-wrap;
-      border-radius: 5px;
+      padding: 10px;
+      min-height: 100px;
     }
-    .stats {
+    .info {
       margin-top: 10px;
-      font-size: 0.95em;
-      color: #444;
-      display: flex;
-      justify-content: space-between;
+      font-size: 14px;
+    }
+    button {
+      margin-right: 10px;
+    }
+    #errorMessage {
+      color: red;
+      margin-top: 10px;
     }
   </style>
 </head>
 <body>
-  <h1>连续语音识别助手</h1>
-  <div style="text-align:center;">
-    <button id="startBtn">🎤 开始识别</button>
-    <button id="stopBtn" disabled>✋ 停止识别</button>
-  </div>
-  <div id="info">
-    开始时间：<span id="startTime">--</span> |
-    用时：<span id="timer">00:00</span> |
-    字数：<span id="charCount">0</span>
-  </div>
-  <div id="transcript" aria-live="polite"></div>
+  <h2>语音实时识别</h2>
+  <button id="startBtn">开始识别</button>
+  <button id="stopBtn" disabled>停止识别</button>
+  <div id="timer" class="info">已识别时间：0 秒</div>
+  <div id="charCount" class="info">字数：0</div>
+  <div id="errorMessage"></div>
+  <div id="transcript"></div>
 
-<script>
-  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  <script>
+    const startBtn = document.getElementById("startBtn");
+    const stopBtn = document.getElementById("stopBtn");
+    const transcriptDiv = document.getElementById("transcript");
+    const timerDiv = document.getElementById("timer");
+    const charCountDiv = document.getElementById("charCount");
+    const errorMessageDiv = document.getElementById("errorMessage");
 
-  if (!SpeechRecognition) {
-    alert("当前浏览器不支持语音识别，请使用支持的浏览器，如手机 Chrome");
-    throw new Error("SpeechRecognition API not supported");
-  }
+    let recognizing = false;
+    let recognition;
+    let errorCount = 0;
+    let timer = null;
+    let seconds = 0;
+    let fullTranscript = "";
 
-  const recognition = new SpeechRecognition();
-  recognition.lang = 'zh-CN';
-  recognition.continuous = true;
-  recognition.interimResults = true;
-
-  let recognizing = false;
-  let finalTranscript = '';
-  let errorCount = 0;
-  let timerInterval = null;
-  let seconds = 0;
-
-  const startBtn = document.getElementById("startBtn");
-  const stopBtn = document.getElementById("stopBtn");
-  const transcriptDiv = document.getElementById("transcript");
-  const charCountSpan = document.getElementById("charCount");
-  const timerSpan = document.getElementById("timer");
-  const startTimeSpan = document.getElementById("startTime");
-
-  const updateTimer = () => {
-    seconds++;
-    const m = String(Math.floor(seconds / 60)).padStart(2, '0');
-    const s = String(seconds % 60).padStart(2, '0');
-    timerSpan.textContent = `${m}:${s}`;
-  };
-
-  const countCharacters = (text) => {
-    return text.replace(/[^\u4e00-\u9fa5a-zA-Z0-9]/g, "").length;
-  };
-
-  startBtn.onclick = () => {
-    if (!recognizing) {
-      finalTranscript = '';
-      transcriptDiv.textContent = '';
-      errorCount = 0;
-      seconds = 0;
-      timerSpan.textContent = "00:00";
-      charCountSpan.textContent = "0";
-      startTimeSpan.textContent = new Date().toLocaleTimeString();
-      recognition.start();
+    function updateCharCount(text) {
+      const count = text.replace(/[^\u4e00-\u9fa5a-zA-Z0-9]/g, "").length;
+      charCountDiv.textContent = "字数：" + count;
     }
-  };
 
-  stopBtn.onclick = () => {
-    if (recognizing) {
+    function startTimer() {
+      timer = setInterval(() => {
+        seconds++;
+        timerDiv.textContent = "已识别时间：" + seconds + " 秒";
+      }, 1000);
+    }
+
+    function stopTimer() {
+      clearInterval(timer);
+    }
+
+    function initRecognition() {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SpeechRecognition) {
+        alert("你的浏览器不支持语音识别，请使用最新版Chrome浏览器");
+        return;
+      }
+
+      recognition = new SpeechRecognition();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = "zh-CN";
+
+      recognition.onstart = () => {
+        recognizing = true;
+        console.log("识别已开始");
+        errorMessageDiv.textContent = "";
+      };
+
+      recognition.onerror = (event) => {
+        console.error("识别错误：", event.error);
+        errorCount++;
+        errorMessageDiv.textContent = "错误：" + event.error;
+
+        if (event.error === "not-allowed" || event.error === "service-not-allowed") {
+          alert("请允许麦克风访问");
+          recognizing = false;
+          startBtn.disabled = false;
+          stopBtn.disabled = true;
+        }
+
+        if (event.error === "network") {
+          alert("网络错误，请检查您的网络连接");
+        }
+      };
+
+      recognition.onresult = (event) => {
+        let interim = "";
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          if (event.results[i].isFinal) {
+            fullTranscript += event.results[i][0].transcript;
+          } else {
+            interim += event.results[i][0].transcript;
+          }
+        }
+        transcriptDiv.textContent = fullTranscript + interim;
+        updateCharCount(fullTranscript + interim);
+      };
+
+      recognition.onend = () => {
+        console.log("识别已结束");
+        if (recognizing && errorCount < 3) {
+          setTimeout(() => {
+            recognition.start();
+          }, 1000); // 延迟1秒重新开始识别
+        } else {
+          recognizing = false;
+          startBtn.disabled = false;
+          stopBtn.disabled = true;
+          stopTimer();
+          if (errorCount >= 3) {
+            alert("识别多次失败，已停止");
+          }
+        }
+      };
+    }
+
+    startBtn.onclick = () => {
+      fullTranscript = "";
+      transcriptDiv.textContent = "";
+      errorMessageDiv.textContent = "";
+      seconds = 0;
+      errorCount = 0;
+      startBtn.disabled = true;
+      stopBtn.disabled = false;
+      initRecognition();
+      recognition.start();
+      startTimer();
+    };
+
+    stopBtn.onclick = () => {
       recognizing = false;
       recognition.stop();
-      clearInterval(timerInterval);
-    }
-  };
-
-  recognition.onstart = () => {
-    recognizing = true;
-    startBtn.disabled = true;
-    stopBtn.disabled = false;
-    timerInterval = setInterval(updateTimer, 1000);
-    console.log("识别已启动");
-  };
-
-  recognition.onend = () => {
-    console.log("识别已结束");
-    clearInterval(timerInterval);
-    if (recognizing && errorCount < 3) {
-      recognition.start();  // 自动重启
-      console.log("重新启动识别");
-    } else {
-      recognizing = false;
-      startBtn.disabled = false;
       stopBtn.disabled = true;
-      if (errorCount >= 3) {
-        alert("识别多次失败，已自动停止。请刷新页面后重试。");
-      }
-    }
-  };
-
-  recognition.onerror = (event) => {
-    console.error("识别错误：", event.error);
-    errorCount++;
-    if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
-      alert("请允许麦克风权限以使用语音识别");
-      recognizing = false;
       startBtn.disabled = false;
-      stopBtn.disabled = true;
-    }
-    if (event.error === 'network') {
-      alert("网络错误，请检查您的网络连接");
-    }
-  };
-
-  recognition.onresult = (event) => {
-    let interim = '';
-    for (let i = event.resultIndex; i < event.results.length; ++i) {
-      let text = event.results[i][0].transcript;
-      if (event.results[i].isFinal) {
-        finalTranscript += text;
-      } else {
-        interim += text;
-      }
-    }
-    const fullText = finalTranscript + interim;
-    transcriptDiv.textContent = fullText;
-    charCountSpan.textContent = countCharacters(fullText);
-  };
-</script>
+      stopTimer();
+    };
+  </script>
 </body>
 </html>
