@@ -1,168 +1,107 @@
 <!DOCTYPE html>
 <html lang="zh">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>实时语音转文字工具</title>
-  <style>
-    body { font-family: Arial, sans-serif; padding: 20px; max-width: 600px; margin: auto; }
-    button { font-size: 1.2em; padding: 10px 20px; margin-top: 10px; }
-    #result { white-space: pre-wrap; margin-top: 20px; min-height: 100px; border: 1px solid #ccc; padding: 10px; }
-    #stats { margin-top: 15px; font-weight: bold; }
-  </style>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>改进版实时连续语音听写</title>
+<style>
+  body { font-family: Arial, sans-serif; max-width: 600px; margin: 20px auto; padding: 10px; }
+  button { font-size: 1.2em; padding: 10px 20px; margin: 5px; }
+  #transcript { border: 1px solid #ccc; padding: 10px; min-height: 100px; white-space: pre-wrap; margin-top: 20px; }
+</style>
 </head>
 <body>
-  <h1>实时语音转文字工具</h1>
-  <button id="startBtn">🎤 开始识别</button>
-  <button id="stopBtn" disabled>⏹️ 停止识别</button>
-  <button id="copyBtn">📋 一键复制</button>
+  <h1>改进版实时连续语音听写</h1>
+  <button id="startBtn">开始识别</button>
+  <button id="stopBtn" disabled>停止识别</button>
+  <div id="transcript" aria-live="polite"></div>
 
-  <div id="stats">
-    文字字数（不含标点）：<span id="charCount">0</span> | “点击”出现次数：<span id="clickCount">0</span> | 计时：<span id="timer">00:00</span>
-  </div>
+<script>
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) {
+    alert('抱歉，您的浏览器不支持语音识别，请使用Chrome浏览器');
+    throw new Error('SpeechRecognition API 不支持');
+  }
 
-  <div id="result" aria-live="polite" aria-atomic="true"></div>
+  const recognition = new SpeechRecognition();
+  recognition.lang = 'zh-CN';
+  recognition.continuous = true;
+  recognition.interimResults = true;
 
-  <script>
-    // 兼容SpeechRecognition
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      alert("抱歉，您的浏览器不支持语音识别，请使用Chrome浏览器。");
-      throw new Error("SpeechRecognition API not supported");
+  let recognizing = false;
+  let finalTranscript = '';
+  let errorCount = 0;  // 统计错误次数，避免死循环重启
+
+  const startBtn = document.getElementById('startBtn');
+  const stopBtn = document.getElementById('stopBtn');
+  const transcriptDiv = document.getElementById('transcript');
+
+  startBtn.onclick = () => {
+    if (!recognizing) {
+      finalTranscript = '';
+      transcriptDiv.textContent = '';
+      recognition.start();
     }
+  };
 
-    const recognition = new SpeechRecognition();
-    recognition.lang = "zh-CN";
-    recognition.continuous = true;
-    recognition.interimResults = true;
-
-    let recognizing = false;
-    let finalTranscript = "";
-    let timerInterval = null;
-    let secondsElapsed = 0;
-
-    const startBtn = document.getElementById("startBtn");
-    const stopBtn = document.getElementById("stopBtn");
-    const copyBtn = document.getElementById("copyBtn");
-    const resultDiv = document.getElementById("result");
-    const charCountSpan = document.getElementById("charCount");
-    const clickCountSpan = document.getElementById("clickCount");
-    const timerSpan = document.getElementById("timer");
-
-    // 正则匹配标点符号（包括中文、英文标点）
-    const punctuationRegex = /[\s`~!@#$%^&*()_\-+=\[\]{}|\\;:'",.<>\/?，。！？；：“”‘’（）【】《》]/g;
-
-    // 计时器函数
-    function startTimer() {
-      secondsElapsed = 0;
-      timerSpan.textContent = formatTime(secondsElapsed);
-      timerInterval = setInterval(() => {
-        secondsElapsed++;
-        timerSpan.textContent = formatTime(secondsElapsed);
-      }, 1000);
-    }
-    function stopTimer() {
-      clearInterval(timerInterval);
-    }
-    function formatTime(sec) {
-      const m = String(Math.floor(sec / 60)).padStart(2, "0");
-      const s = String(sec % 60).padStart(2, "0");
-      return `${m}:${s}`;
-    }
-
-    // 更新统计
-    function updateStats(text) {
-      // 去除标点和空白，计算字数
-      const cleanText = text.replace(punctuationRegex, "");
-      charCountSpan.textContent = cleanText.length;
-
-      // 统计“点击”出现次数（忽略大小写）
-      const clickMatches = text.match(/点击/gi);
-      clickCountSpan.textContent = clickMatches ? clickMatches.length : 0;
-    }
-
-    recognition.onstart = () => {
-      recognizing = true;
-      startBtn.disabled = true;
-      stopBtn.disabled = false;
-      startTimer();
-      console.log("语音识别已开始");
-    };
-
-    recognition.onend = () => {
+  stopBtn.onclick = () => {
+    if (recognizing) {
       recognizing = false;
-      startBtn.disabled = false;
-      stopBtn.disabled = true;
-      stopTimer();
-      console.log("语音识别已停止");
-    };
+      recognition.stop();
+    }
+  };
 
-    recognition.onerror = (event) => {
-      console.error("识别错误：", event.error);
-      if (event.error === "not-allowed" || event.error === "service-not-allowed") {
-        alert("请允许浏览器使用麦克风权限！");
-      }
-      recognizing = false;
-      startBtn.disabled = false;
-      stopBtn.disabled = true;
-      stopTimer();
-    };
+  recognition.onstart = () => {
+    recognizing = true;
+    errorCount = 0;
+    startBtn.disabled = true;
+    stopBtn.disabled = false;
+    console.log('识别开始');
+  };
 
-    recognition.onresult = (event) => {
-      let interimTranscript = "";
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const transcript = event.results[i][0].transcript;
-        if (event.results[i].isFinal) {
-          finalTranscript += transcript;
-        } else {
-          interimTranscript += transcript;
-        }
-      }
-      resultDiv.textContent = finalTranscript + interimTranscript;
-      updateStats(finalTranscript + interimTranscript);
-    };
-
-    // 为了解决说完话自动停止的问题，结束后自动重启识别
-    recognition.onend = () => {
-      if (recognizing) {
+  recognition.onend = () => {
+    console.log('识别结束');
+    if (recognizing) {
+      if (errorCount < 3) {
         recognition.start();
-        console.log("识别结束，自动重启");
+        console.log('自动重启识别');
       } else {
-        stopTimer();
+        recognizing = false;
         startBtn.disabled = false;
         stopBtn.disabled = true;
-        console.log("识别真正停止");
+        alert('识别连续失败，已停止，请刷新页面后重试');
       }
-    };
+    } else {
+      startBtn.disabled = false;
+      stopBtn.disabled = true;
+    }
+  };
 
-    startBtn.addEventListener("click", () => {
-      if (!recognizing) {
-        finalTranscript = "";
-        resultDiv.textContent = "";
-        updateStats("");
-        recognition.start();
-      }
-    });
+  recognition.onerror = (event) => {
+    console.error('识别错误:', event.error);
+    errorCount++;
+    if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+      alert('请允许浏览器使用麦克风权限');
+      recognizing = false;
+      startBtn.disabled = false;
+      stopBtn.disabled = true;
+    } else if (event.error === 'network') {
+      alert('网络错误，请检查网络');
+    }
+  };
 
-    stopBtn.addEventListener("click", () => {
-      if (recognizing) {
-        recognizing = false;
-        recognition.stop();
+  recognition.onresult = (event) => {
+    let interimTranscript = '';
+    for (let i = event.resultIndex; i < event.results.length; i++) {
+      let transcript = event.results[i][0].transcript;
+      if (event.results[i].isFinal) {
+        finalTranscript += transcript;
+      } else {
+        interimTranscript += transcript;
       }
-    });
-
-    copyBtn.addEventListener("click", () => {
-      const text = resultDiv.textContent;
-      if (!text) {
-        alert("没有可复制的文字");
-        return;
-      }
-      navigator.clipboard.writeText(text).then(() => {
-        alert("已复制到剪贴板");
-      }).catch(() => {
-        alert("复制失败，请手动复制");
-      });
-    });
-  </script>
+    }
+    transcriptDiv.textContent = finalTranscript + interimTranscript;
+  };
+</script>
 </body>
 </html>
