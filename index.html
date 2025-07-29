@@ -1,26 +1,62 @@
 <!DOCTYPE html>
 <html lang="zh">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>改进版实时连续语音听写</title>
-<style>
-  body { font-family: Arial, sans-serif; max-width: 600px; margin: 20px auto; padding: 10px; }
-  button { font-size: 1.2em; padding: 10px 20px; margin: 5px; }
-  #transcript { border: 1px solid #ccc; padding: 10px; min-height: 100px; white-space: pre-wrap; margin-top: 20px; }
-</style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>连续语音识别助手</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 20px;
+      max-width: 600px;
+      margin: auto;
+      background: #f8f9fa;
+    }
+    h1 {
+      font-size: 1.5em;
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    button {
+      font-size: 1em;
+      padding: 10px 20px;
+      margin: 10px 5px;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      color: #fff;
+    }
+    #startBtn {
+      background-color: #28a745;
+    }
+    #stopBtn {
+      background-color: #dc3545;
+    }
+    #transcript {
+      margin-top: 20px;
+      padding: 15px;
+      border: 1px solid #ccc;
+      min-height: 120px;
+      background: #fff;
+      white-space: pre-wrap;
+      border-radius: 5px;
+    }
+  </style>
 </head>
 <body>
-  <h1>改进版实时连续语音听写</h1>
-  <button id="startBtn">开始识别</button>
-  <button id="stopBtn" disabled>停止识别</button>
+  <h1>连续语音识别助手</h1>
+  <div style="text-align:center;">
+    <button id="startBtn">🎤 开始识别</button>
+    <button id="stopBtn" disabled>✋ 停止识别</button>
+  </div>
   <div id="transcript" aria-live="polite"></div>
 
 <script>
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
   if (!SpeechRecognition) {
-    alert('抱歉，您的浏览器不支持语音识别，请使用Chrome浏览器');
-    throw new Error('SpeechRecognition API 不支持');
+    alert("当前浏览器不支持语音识别，请使用支持的浏览器，如手机 Chrome");
+    throw new Error("SpeechRecognition API not supported");
   }
 
   const recognition = new SpeechRecognition();
@@ -30,77 +66,73 @@
 
   let recognizing = false;
   let finalTranscript = '';
-  let errorCount = 0;  // 统计错误次数，避免死循环重启
+  let errorCount = 0;
+  let forceStop = false;
 
-  const startBtn = document.getElementById('startBtn');
-  const stopBtn = document.getElementById('stopBtn');
-  const transcriptDiv = document.getElementById('transcript');
+  const startBtn = document.getElementById("startBtn");
+  const stopBtn = document.getElementById("stopBtn");
+  const transcriptDiv = document.getElementById("transcript");
 
   startBtn.onclick = () => {
     if (!recognizing) {
       finalTranscript = '';
       transcriptDiv.textContent = '';
+      errorCount = 0;
+      forceStop = false;
       recognition.start();
     }
   };
 
   stopBtn.onclick = () => {
     if (recognizing) {
-      recognizing = false;
+      forceStop = true;
       recognition.stop();
     }
   };
 
   recognition.onstart = () => {
     recognizing = true;
-    errorCount = 0;
     startBtn.disabled = true;
     stopBtn.disabled = false;
-    console.log('识别开始');
+    console.log("语音识别已启动");
   };
 
   recognition.onend = () => {
-    console.log('识别结束');
-    if (recognizing) {
-      if (errorCount < 3) {
-        recognition.start();
-        console.log('自动重启识别');
-      } else {
-        recognizing = false;
-        startBtn.disabled = false;
-        stopBtn.disabled = true;
-        alert('识别连续失败，已停止，请刷新页面后重试');
-      }
-    } else {
-      startBtn.disabled = false;
-      stopBtn.disabled = true;
+    console.log("语音识别已结束");
+    recognizing = false;
+    startBtn.disabled = false;
+    stopBtn.disabled = true;
+
+    if (!forceStop && errorCount < 5) {
+      console.log("尝试重新启动识别...");
+      setTimeout(() => recognition.start(), 300); // 避免立即重启导致出错
+    } else if (errorCount >= 5) {
+      alert("识别多次失败，已停止。请刷新页面重试");
     }
   };
 
   recognition.onerror = (event) => {
-    console.error('识别错误:', event.error);
+    console.error("识别错误：", event.error);
     errorCount++;
     if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
-      alert('请允许浏览器使用麦克风权限');
-      recognizing = false;
-      startBtn.disabled = false;
-      stopBtn.disabled = true;
+      alert("请允许麦克风权限以使用语音识别");
+      forceStop = true;
     } else if (event.error === 'network') {
-      alert('网络错误，请检查网络');
+      alert("网络错误，请检查您的网络连接");
     }
   };
 
   recognition.onresult = (event) => {
-    let interimTranscript = '';
-    for (let i = event.resultIndex; i < event.results.length; i++) {
-      let transcript = event.results[i][0].transcript;
+    let interim = '';
+    for (let i = event.resultIndex; i < event.results.length; ++i) {
+      let text = event.results[i][0].transcript;
       if (event.results[i].isFinal) {
-        finalTranscript += transcript;
+        finalTranscript += text;
       } else {
-        interimTranscript += transcript;
+        interim += text;
       }
     }
-    transcriptDiv.textContent = finalTranscript + interimTranscript;
+    transcriptDiv.textContent = finalTranscript + interim;
   };
 </script>
 </body>
