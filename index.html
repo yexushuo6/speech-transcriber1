@@ -1,161 +1,183 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
- <meta charset="UTF-8" />
- <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
- <title>实时语音听写</title>
- <style>
- body {
- font-family: Arial, sans-serif;
- padding: 20px;
- background: #f9f9f9;
- }
- h1 {
- text-align: center;
- }
- #text {
- width: 100%;
- height: 200px;
- padding: 10px;
- font-size: 16px;
- border: 1px solid #ccc;
- resize: none;
- }
- .controls {
- margin-top: 15px;
- text-align: center;
- }
- button {
- font-size: 16px;
- padding: 10px 20px;
- margin: 0 10px;
- }
- .stats {
- margin-top: 15px;
- font-size: 16px;
- text-align: center;
- }
- </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>实时语音听写</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 20px;
+      background: #f9f9f9;
+    }
+    h1 {
+      text-align: center;
+    }
+    #text {
+      width: 100%;
+      height: 200px;
+      padding: 10px;
+      font-size: 16px;
+      border: 1px solid #ccc;
+      resize: none;
+    }
+    .controls {
+      margin-top: 15px;
+      text-align: center;
+    }
+    button {
+      font-size: 16px;
+      padding: 10px 20px;
+      margin: 0 10px;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      color: #fff;
+    }
+    #startBtn {
+      background-color: #28a745;
+    }
+    #stopBtn {
+      background-color: #dc3545;
+    }
+    .stats {
+      margin-top: 15px;
+      font-size: 16px;
+      text-align: center;
+    }
+  </style>
 </head>
 <body>
- <h1>实时语音听写系统</h1>
- <textarea id="text" readonly></textarea>
- 
- <div class="controls">
- <button id="startBtn">开始识别</button>
- <button id="stopBtn" disabled>停止识别</button>
- </div>
+  <h1>实时语音听写系统</h1>
+  <textarea id="text" readonly></textarea>
+  
+  <div class="controls">
+    <button id="startBtn">🎤 开始识别</button>
+    <button id="stopBtn" disabled>✋ 停止识别</button>
+  </div>
 
- <div class="stats">
- ⏱️ 时长：<span id="timer">0</span> 秒 ｜ ✍️ 字数：<span id="charCount">0</span>
- </div>
+  <div class="stats">
+    ⏱️ 时长：<span id="timer">0</span> 秒 ｜ ✍️ 字数：<span id="charCount">0</span>
+  </div>
 
- <script>
- const startBtn = document.getElementById("startBtn");
- const stopBtn = document.getElementById("stopBtn");
- const textArea = document.getElementById("text");
- const timerEl = document.getElementById("timer");
- const charCountEl = document.getElementById("charCount");
+  <script>
+    const startBtn = document.getElementById("startBtn");
+    const stopBtn = document.getElementById("stopBtn");
+    const textArea = document.getElementById("text");
+    const timerEl = document.getElementById("timer");
+    const charCountEl = document.getElementById("charCount");
 
- let recognition;
- let recognizing = false;
- let startTime;
- let timerInterval;
- let errorCount = 0;
+    let recognition;
+    let recognizing = false;
+    let startTime;
+    let timerInterval;
 
- // 初始化语音识别
- if (!('webkitSpeechRecognition' in window)) {
- alert("当前浏览器不支持语音识别，请使用 Chrome 浏览器");
- } else {
- recognition = new webkitSpeechRecognition();
- recognition.continuous = true; // 持续识别，不因暂停而停止
- recognition.interimResults = true; // 显示实时临时结果
- recognition.lang = 'zh-CN';
+    // 初始化语音识别
+    if (!('webkitSpeechRecognition' in window)) {
+      console.error("当前浏览器不支持语音识别，请使用 Chrome 浏览器");
+      startBtn.disabled = true; // 禁用开始按钮
+    } else {
+      recognition = new webkitSpeechRecognition();
+      recognition.continuous = true; // 持续识别
+      recognition.interimResults = true; // 显示实时临时结果
+      recognition.lang = 'zh-CN';
 
- recognition.onstart = () => {
- recognizing = true;
- startBtn.disabled = true;
- stopBtn.disabled = false;
- startTime = Date.now();
- timerInterval = setInterval(updateTimer, 1000);
- console.log ("识别已启动");
- };
+      recognition.onstart = () => {
+        recognizing = true;
+        startBtn.disabled = true;
+        stopBtn.disabled = false;
+        startTime = Date.now();
+        timerInterval = setInterval(updateTimer, 1000);
+        console.log("识别已启动");
+      };
 
- recognition.onend = () => {
- console.log("识别已结束");
- if (recognizing) {
- // 如果仍在识别状态，自动重启
- recognition.start();
- console.log("自动重启识别");
- } else {
- // 正常停止
- clearInterval(timerInterval);
- startBtn.disabled = false;
- stopBtn.disabled = true;
- }
- };
+      recognition.onend = () => {
+        console.log("识别已结束");
+        if (recognizing) {
+          // 如果仍在识别状态，延迟1秒后自动重启
+          setTimeout(() => {
+            try {
+              recognition.start();
+              console.log("自动重启识别");
+            } catch (e) {
+              console.error("重启失败：", e);
+              // 如果重启失败，继续尝试
+              setTimeout(() => recognizing && recognition.start(), 1000);
+            }
+          }, 1000);
+        } else {
+          // 正常停止
+          clearInterval(timerInterval);
+          startBtn.disabled = false;
+          stopBtn.disabled = true;
+          console.log("识别已手动停止");
+        }
+      };
 
- recognition.onerror = (event) => {
- console.error("识别错误：", event.error);
- if (event.error === 'network') {
- console.warn("网络错误，0.5秒后尝试重新连接...");
- errorCount++;
- if (errorCount <= 3 && recognizing) {
- setTimeout(() => {
- recognition.start();
- }, 500); // 0.5秒后重连
- } else if (errorCount > 3) {
- alert("网络错误多次，已停止识别。请检查网络。");
- stopRecognition();
- }
- } else if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
- alert("请允许麦克风权限以使用语音识别");
- stopRecognition();
- }
- };
+      recognition.onerror = (event) => {
+        console.error("识别错误：", event.error);
+        if (recognizing) {
+          // 网络错误或其他错误，延迟1秒后自动重试
+          setTimeout(() => {
+            try {
+              recognition.start();
+              console.log("因错误自动重启识别");
+            } catch (e) {
+              console.error("重试失败：", e);
+              // 继续尝试重启
+              setTimeout(() => recognizing && recognition.start(), 1000);
+            }
+          }, 1000);
+        }
+      };
 
- recognition.onresult = (event) => {
- let interimTranscript = '';
- let finalTranscript = textArea.value;
+      recognition.onresult = (event) => {
+        let interimTranscript = '';
+        let finalTranscript = textArea.value;
 
- for (let i = event.resultIndex; i < event.results.length; ++i) {
- const transcript = event.results[i][0].transcript;
- if (event.results[i].isFinal) {
- finalTranscript += transcript;
- } else {
- interimTranscript += transcript;
- }
- }
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          const transcript = event.results[i][0].transcript;
+          if (event.results[i].isFinal) {
+            finalTranscript += transcript;
+          } else {
+            interimTranscript += transcript;
+          }
+        }
 
- textArea.value = finalTranscript + interimTranscript;
- updateCharCount();
- };
- }
+        textArea.value = finalTranscript + interimTranscript;
+        updateCharCount();
+      };
+    }
 
- function startRecognition() {
- errorCount = 0;
- recognition.start();
- }
+    function startRecognition() {
+      if (!recognition) return;
+      recognizing = true;
+      try {
+        recognition.start();
+      } catch (e) {
+        console.error("启动失败：", e);
+      }
+    }
 
- function stopRecognition() {
- recognizing = false;
- recognition.stop();
- }
+    function stopRecognition() {
+      recognizing = false;
+      recognition.stop();
+    }
 
- function updateTimer() {
- if (startTime) {
- const seconds = Math.floor((Date.now() - startTime) / 1000);
- timerEl.textContent = seconds;
- }
- }
+    function updateTimer() {
+      if (startTime) {
+        const seconds = Math.floor((Date.now() - startTime) / 1000);
+        timerEl.textContent = seconds;
+      }
+    }
 
- function updateCharCount() {
- const content = textArea.value.replace(/[\s\p{P}\p{S}]/gu, ''); // 移除空格和标点
- charCountEl.textContent = content.length;
- }
+    function updateCharCount() {
+      const content = textArea.value.replace(/[\s\p{P}\p{S}]/gu, ''); // 移除空格和标点
+      charCountEl.textContent = content.length;
+    }
 
- startBtn.addEventListener("click", startRecognition);
- stopBtn.addEventListener("click", stopRecognition);
- </script>
+    startBtn.addEventListener("click", startRecognition);
+    stopBtn.addEventListener("click", stopRecognition);
+  </script>
 </body>
 </html>
