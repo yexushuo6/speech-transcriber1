@@ -94,22 +94,23 @@
     const startBtn = document.getElementById("startBtn");
     const stopBtn = document.getElementById("stopBtn");
 
-    // Initialize recognition
+    // 初始化语音识别
     function initRecognition() {
       if (recognition) return true;
 
       const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition || null;
       if (!SpeechRecognition) {
-        console.error("Browser does not support speech recognition. Please use Chrome or Edge.");
+        alert("❌ 当前浏览器不支持语音识别功能，请使用 Chrome 或 Edge 等支持的浏览器。");
+        output.innerText = "⚠️ 当前浏览器不支持语音识别功能。请换用 Chrome / Edge 等支持的浏览器。";
         startBtn.disabled = true;
         return false;
       }
 
       recognition = new SpeechRecognition();
-      recognition.continuous = true;
-      recognition.interimResults = true;
+      recognition.continuous = true; // 持续监听
+      recognition.interimResults = true; // 实时临时结果
       recognition.lang = "zh-CN";
-      recognition.maxAlternatives = 1; // Reduce performance overhead
+      recognition.maxAlternatives = 1; // 减少性能开销
 
       recognition.onresult = function (event) {
         let interimTranscript = "";
@@ -126,36 +127,41 @@
       };
 
       recognition.onerror = function (event) {
-        console.error("Recognition error:", event.error);
-        if (recognizing) {
-          retryRecognition(1000); // Silently retry on any error
+        console.error("识别错误:", event.error);
+        if (event.error === "not-allowed" || event.error === "service-not-allowed") {
+          alert("❌ 请允许麦克风权限以使用语音识别");
+          output.innerText = "⚠️ 请允许麦克风权限以继续识别";
+          stopRecognition();
+        } else if (recognizing) {
+          retryRecognition(1000); // 静默重试其他错误
         }
       };
 
       recognition.onend = function () {
-        console.log("Recognition ended");
+        console.log("识别结束");
         if (recognizing) {
-          retryRecognition(1000); // Silently retry if still recognizing
+          retryRecognition(1000); // 持续监听，自动重试
         } else {
           stopTimer();
           startBtn.disabled = false;
           stopBtn.disabled = true;
+          output.innerText = fullText.trim() || "👉 你说的话会显示在这里。";
         }
       };
 
       return true;
     }
 
-    // Retry recognition with exponential backoff
+    // 重试函数，带指数退避
     function retryRecognition(delay) {
       setTimeout(() => {
         if (!recognizing) return;
         try {
           recognition.start();
-          console.log("Recognition restarted");
+          console.log("识别已重启");
         } catch (e) {
-          console.error("Retry failed:", e);
-          // Exponential backoff, cap at 5s
+          console.error("重试失败:", e);
+          // 指数退避，最大延迟5秒
           retryRecognition(Math.min(delay * 2, 5000));
         }
       }, delay);
@@ -169,7 +175,7 @@
       try {
         recognition.start();
       } catch (e) {
-        console.error("Start failed:", e);
+        console.error("启动失败:", e);
         retryRecognition(1000);
       }
     }
@@ -179,9 +185,8 @@
       try {
         recognition.stop();
       } catch (e) {
-        console.error("Stop failed:", e);
+        console.error("停止失败:", e);
       }
-      output.innerText = fullText.trim() || "👉 你说的话会显示在这里。";
     }
 
     function clearText() {
@@ -195,24 +200,24 @@
 
     function copyText() {
       if (!fullText.trim()) {
-        console.warn("No content to copy");
+        alert("无内容可复制");
         return;
       }
       navigator.clipboard.writeText(fullText.trim()).then(() => {
-        console.log("Content copied to clipboard");
+        alert("✅ 已复制到剪贴板！");
       }).catch(err => {
-        console.error("Copy failed:", err);
+        alert("❌ 复制失败：" + err);
       });
     }
 
     function updateOutput() {
       output.innerText = fullText.trim();
 
-      // Update character count (excluding punctuation and spaces)
+      // 统计字数（不含标点和空格）
       const textWithoutPunctuation = fullText.replace(/[\p{P}\p{S}\s]/gu, '').trim();
       charCountEl.innerText = textWithoutPunctuation.length;
 
-      // Update "点击" count
+      // 统计“点击”次数
       const clickMatches = fullText.match(/点击/g);
       clickCountEl.innerText = clickMatches ? clickMatches.length : 0;
     }
