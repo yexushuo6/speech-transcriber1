@@ -72,15 +72,17 @@
     let startTime;
     let timerInterval;
 
-    // 初始化语音识别
-    if (!('webkitSpeechRecognition' in window)) {
-      console.error("当前浏览器不支持语音识别，请使用 Chrome 浏览器");
-      startBtn.disabled = true; // 禁用开始按钮
+    // Initialize Speech Recognition
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      console.error("Browser does not support speech recognition. Please use Chrome.");
+      startBtn.disabled = true;
     } else {
-      recognition = new webkitSpeechRecognition();
-      recognition.continuous = true; // 持续识别
-      recognition.interimResults = true; // 显示实时临时结果
+      recognition = new SpeechRecognition();
+      recognition.continuous = true; // Continuous recognition
+      recognition.interimResults = true; // Show interim results
       recognition.lang = 'zh-CN';
+      recognition.maxAlternatives = 1; // Reduce performance overhead
 
       recognition.onstart = () => {
         recognizing = true;
@@ -88,46 +90,25 @@
         stopBtn.disabled = false;
         startTime = Date.now();
         timerInterval = setInterval(updateTimer, 1000);
-        console.log("识别已启动");
+        console.log("Recognition started");
       };
 
       recognition.onend = () => {
-        console.log("识别已结束");
+        console.log("Recognition ended");
         if (recognizing) {
-          // 如果仍在识别状态，延迟1秒后自动重启
-          setTimeout(() => {
-            try {
-              recognition.start();
-              console.log("自动重启识别");
-            } catch (e) {
-              console.error("重启失败：", e);
-              // 如果重启失败，继续尝试
-              setTimeout(() => recognizing && recognition.start(), 1000);
-            }
-          }, 1000);
+          retryRecognition(1000); // Retry after 1s if still recognizing
         } else {
-          // 正常停止
           clearInterval(timerInterval);
           startBtn.disabled = false;
           stopBtn.disabled = true;
-          console.log("识别已手动停止");
+          console.log("Recognition stopped manually");
         }
       };
 
       recognition.onerror = (event) => {
-        console.error("识别错误：", event.error);
+        console.error("Recognition error:", event.error);
         if (recognizing) {
-          // 网络错误或其他错误，延迟1秒后自动重试
-          setTimeout(() => {
-            try {
-              recognition.start();
-              console.log("因错误自动重启识别");
-            } catch (e) {
-              console.error("重试失败：", e);
-              // 继续尝试重启
-              setTimeout(() => recognizing && recognition.start(), 1000);
-            }
-          }, 1000);
+          retryRecognition(1000); // Retry for any error
         }
       };
 
@@ -149,19 +130,40 @@
       };
     }
 
+    // Retry recognition with exponential backoff
+    function retryRecognition(delay) {
+      setTimeout(() => {
+        if (!recognizing) return;
+        try {
+          recognition.start();
+          console.log("Recognition restarted");
+        } catch (e) {
+          console.error("Retry failed:", e);
+          // Exponential backoff, cap at 5s
+          retryRecognition(Math.min(delay * 2, 5000));
+        }
+      }, delay);
+    }
+
     function startRecognition() {
       if (!recognition) return;
       recognizing = true;
+      textArea.value = ''; // Clear textarea on start
       try {
         recognition.start();
       } catch (e) {
-        console.error("启动失败：", e);
+        console.error("Start failed:", e);
+        retryRecognition(1000);
       }
     }
 
     function stopRecognition() {
       recognizing = false;
-      recognition.stop();
+      try {
+        recognition.stop();
+      } catch (e) {
+        console.error("Stop failed:", e);
+      }
     }
 
     function updateTimer() {
@@ -172,7 +174,7 @@
     }
 
     function updateCharCount() {
-      const content = textArea.value.replace(/[\s\p{P}\p{S}]/gu, ''); // 移除空格和标点
+      const content = textArea.value.replace(/[\s\p{P}\p{S}]/gu, ''); // Remove spaces and punctuation
       charCountEl.textContent = content.length;
     }
 
